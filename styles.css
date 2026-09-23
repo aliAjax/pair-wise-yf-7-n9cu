@@ -259,6 +259,79 @@ h3 {
   place-items: center;
 }
 
+.phrase-form {
+  display: flex;
+  gap: 8px;
+}
+
+.phrase-form input {
+  flex: 1;
+  letter-spacing: 2px;
+}
+
+.phrase-tip {
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.phrase-list {
+  display: grid;
+  gap: 8px;
+  max-height: 24vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.phrase-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 8px 10px;
+}
+
+.phrase-item strong {
+  font-size: 16px;
+  letter-spacing: 2px;
+}
+
+.phrase-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.phrase-actions button {
+  padding: 6px 10px;
+  font-size: 12px;
+}
+
+.phrase-actions button.ghost {
+  color: var(--red);
+}
+
+.notice {
+  display: none;
+  flex: 1;
+  min-width: 0;
+  border-radius: 6px;
+  padding: 8px 10px;
+  background: rgba(54, 95, 125, 0.1);
+  border: 1px solid rgba(54, 95, 125, 0.35);
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.notice.show {
+  display: block;
+}
+
 .stage-wrap {
   padding: 14px;
 }
@@ -269,6 +342,11 @@ h3 {
   align-items: center;
   gap: 12px;
   margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.status-strip > div:first-child {
+  min-width: 220px;
 }
 
 .status-strip span {
@@ -345,6 +423,16 @@ h3 {
   border-style: solid;
   background: rgba(47, 41, 33, 0.9);
   color: #fff5df;
+}
+
+.cell.selected {
+  outline: 3px solid var(--gold);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 1px rgba(183, 134, 44, 0.5);
+}
+
+.cell.selected.used {
+  outline-color: var(--gold);
 }
 
 .cell.vertical {

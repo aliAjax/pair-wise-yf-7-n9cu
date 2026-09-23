@@ -12,7 +12,9 @@ const starterInventory = [
 const defaultState = {
   inventory: starterInventory,
   selectedTypeId: starterInventory[0].id,
+  selectedCell: null,
   placements: [],
+  phrases: ["山花茶", "风雨"],
   drafts: [],
   settings: {
     paperSize: "postcard",
@@ -23,6 +25,7 @@ const defaultState = {
 };
 
 let state = loadState();
+let notice = "";
 
 const els = {
   paperSize: document.querySelector("#paperSize"),
@@ -47,7 +50,12 @@ const els = {
   inventoryCount: document.querySelector("#inventoryCount"),
   saveDraftBtn: document.querySelector("#saveDraftBtn"),
   exportBtn: document.querySelector("#exportBtn"),
-  clearBoardBtn: document.querySelector("#clearBoardBtn")
+  clearBoardBtn: document.querySelector("#clearBoardBtn"),
+  phraseForm: document.querySelector("#phraseForm"),
+  phraseInput: document.querySelector("#phraseInput"),
+  phraseList: document.querySelector("#phraseList"),
+  phraseCount: document.querySelector("#phraseCount"),
+  statusNotice: document.querySelector("#statusNotice")
 };
 
 function loadState() {
@@ -149,8 +157,9 @@ function renderStage() {
       const placement = map.get(placementKey(row, col));
       const type = placement ? state.inventory.find((item) => item.id === placement.typeId) : null;
       const vertical = state.settings.flowMode === "vertical" ? "vertical" : "";
+      const selected = state.selectedCell && state.selectedCell.row === row && state.selectedCell.col === col ? "selected" : "";
       cells.push(`
-        <button class="cell ${type ? "used" : ""} ${vertical}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
+        <button class="cell ${type ? "used" : ""} ${vertical} ${selected}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列"${selected ? ' aria-current="true"' : ""}>
           ${type ? escapeHtml(type.char) : ""}
         </button>
       `);
@@ -168,9 +177,6 @@ function renderUsage() {
   els.shortageBadge.textContent = shortages.length ? `${shortages.length}处超量` : "数量充足";
   els.shortageBadge.className = `badge ${shortages.length ? "warn" : "ok"}`;
 
-  const selectedType = getSelectedType();
-  els.selectedTypeLabel.textContent = selectedType ? `当前：${selectedType.char} · ${selectedType.style}` : "未选择字模";
-
   els.usageList.innerHTML =
     entries
       .map((item) => {
@@ -186,6 +192,34 @@ function renderUsage() {
       .join("") || `<p class="empty">还没有落字。</p>`;
 }
 
+function renderStatus() {
+  const selectedType = getSelectedType();
+  const cell = state.selectedCell;
+  const cellText = cell ? `第${cell.row + 1}行第${cell.col + 1}列` : "未选择格子";
+  els.selectedTypeLabel.textContent = selectedType
+    ? `当前：${selectedType.char} · ${selectedType.style} · 起始格：${cellText}`
+    : `未选择字模 · 起始格：${cellText}`;
+  els.statusNotice.textContent = notice;
+  els.statusNotice.className = `notice ${notice ? "show" : ""}`;
+}
+
+function renderPhrases() {
+  els.phraseCount.textContent = `${state.phrases.length}条词组`;
+  els.phraseList.innerHTML = state.phrases
+    .map(
+      (text) => `
+        <article class="phrase-item">
+          <strong>${escapeHtml(text)}</strong>
+          <div class="phrase-actions">
+            <button type="button" data-apply-phrase="${escapeHtml(text)}">应用</button>
+            <button type="button" class="ghost" data-delete-phrase="${escapeHtml(text)}">移除</button>
+          </div>
+        </article>
+      `
+    )
+    .join("");
+}
+
 function renderDrafts() {
   els.draftList.innerHTML =
     state.drafts
@@ -193,7 +227,7 @@ function renderDrafts() {
         (draft) => `
           <article class="draft-item">
             <strong>${escapeHtml(draft.title)}</strong>
-            <span>${draft.placements.length}个落字 · ${new Date(draft.savedAt).toLocaleString("zh-CN")}</span>
+            <span>${draft.placements.length}个落字 · ${(draft.phrases || []).length}条词组 · ${new Date(draft.savedAt).toLocaleString("zh-CN")}</span>
             <div class="draft-actions">
               <button type="button" data-load-draft="${draft.id}">载入</button>
               <button type="button" data-delete-draft="${draft.id}">删除</button>
@@ -211,11 +245,17 @@ function renderAll() {
   renderInventory();
   renderStage();
   renderUsage();
+  renderPhrases();
+  renderStatus();
   renderDrafts();
 }
 
 function placeType(row, col, typeId = state.selectedTypeId) {
-  if (!typeId) return;
+  state.selectedCell = { row, col };
+  if (!typeId) {
+    renderAll();
+    return;
+  }
   const existingIndex = state.placements.findIndex((item) => item.row === row && item.col === col);
   if (existingIndex >= 0) {
     if (state.placements[existingIndex].typeId === typeId) {
@@ -226,6 +266,99 @@ function placeType(row, col, typeId = state.selectedTypeId) {
   } else {
     state.placements.push({ row, col, typeId });
   }
+  renderAll();
+}
+
+function addPhrase(event) {
+  event.preventDefault();
+  const text = els.phraseInput.value.trim();
+  if (text.length < 2 || text.length > 6) {
+    notice = "词组需要2到6个字。";
+    renderAll();
+    return;
+  }
+  if (state.phrases.includes(text)) {
+    notice = `词组「${text}」已经在列表中。`;
+    renderAll();
+    return;
+  }
+  state.phrases.push(text);
+  els.phraseForm.reset();
+  notice = `词组「${text}」已保存，共${text.length}字。`;
+  renderAll();
+}
+
+function pickTypeForChar(char, usage) {
+  // 优先同字同风格（沿用当前选中字模的风格），其次同字其它未用尽的风格
+  const selected = getSelectedType();
+  const candidates = state.inventory
+    .filter((item) => item.char === char && (usage[item.id] || 0) < item.quantity)
+    .sort((a, b) => {
+      const score = (item) =>
+        (selected && item.id === selected.id ? 2 : 0) + (selected && item.style === selected.style ? 1 : 0);
+      return score(b) - score(a);
+    });
+  return candidates[0]?.id || null;
+}
+
+function planPhrase(text, row, col) {
+  const { cols, rows } = getGrid();
+  const vertical = state.settings.flowMode === "vertical";
+  const map = new Map(state.placements.map((item) => [placementKey(item.row, item.col), item]));
+  const usage = getUsage();
+  const steps = [];
+  for (let i = 0; i < text.length; i += 1) {
+    const targetRow = vertical ? row + i : row;
+    const targetCol = vertical ? col : col + i;
+    if (targetRow < 0 || targetRow >= rows || targetCol < 0 || targetCol >= cols) {
+      return { error: `第${i + 1}字「${text[i]}」越出纸张边界（${vertical ? "竖排向下" : "横排向右"}，不折行），整次未应用。`, char: text[i] };
+    }
+    const char = text[i];
+    const sameChar = state.inventory.filter((item) => item.char === char);
+    if (sameChar.length === 0) {
+      return { error: `第${i + 1}字「${char}」没有字模，整次未应用。`, char };
+    }
+    // 路径上的旧字会被覆盖，先释放它占用的库存再分配
+    const existing = map.get(placementKey(targetRow, targetCol));
+    if (existing) usage[existing.typeId] = (usage[existing.typeId] || 0) - 1;
+    const typeId = pickTypeForChar(char, usage);
+    if (!typeId) {
+      return { error: `第${i + 1}字「${char}」的全部字模都已用尽，整次未应用。`, char };
+    }
+    usage[typeId] = (usage[typeId] || 0) + 1;
+    steps.push({ row: targetRow, col: targetCol, typeId });
+  }
+  return { steps, map };
+}
+
+function applyPhrase(text) {
+  if (!state.selectedCell) {
+    notice = "请先在版面上点击一个格子作为词组起始格。";
+    renderAll();
+    return;
+  }
+  const { row, col } = state.selectedCell;
+  const plan = planPhrase(text, row, col);
+  if (plan.error) {
+    notice = plan.error;
+    renderAll();
+    return;
+  }
+  plan.steps.forEach((step) => {
+    const key = placementKey(step.row, step.col);
+    const existing = plan.map.get(key);
+    if (existing) {
+      existing.typeId = step.typeId;
+    } else {
+      state.placements.push({ row: step.row, col: step.col, typeId: step.typeId });
+      plan.map.set(key, { row: step.row, col: step.col, typeId: step.typeId });
+    }
+  });
+  const anchor = getSelectedType();
+  const sameStyle = anchor ? plan.steps.filter((step) => state.inventory.find((item) => item.id === step.typeId)?.style === anchor.style).length : 0;
+  notice = `词组「${text}」已从第${row + 1}行第${col + 1}列连续落字${text.length}格${
+    anchor ? `，其中${sameStyle}格沿用「${anchor.style}」风格` : ""
+  }。`;
   renderAll();
 }
 
@@ -255,6 +388,7 @@ function saveDraft() {
     title,
     settings: structuredClone(state.settings),
     placements: structuredClone(state.placements),
+    phrases: structuredClone(state.phrases),
     savedAt: new Date().toISOString()
   });
   state.drafts = state.drafts.slice(0, 8);
@@ -313,6 +447,9 @@ els.paperSize.addEventListener("change", () => {
   state.settings.paperSize = els.paperSize.value;
   const { cols, rows } = getGrid();
   state.placements = state.placements.filter((item) => item.row < rows && item.col < cols);
+  if (state.selectedCell && (state.selectedCell.row >= rows || state.selectedCell.col >= cols)) {
+    state.selectedCell = null;
+  }
   renderAll();
 });
 
@@ -332,6 +469,7 @@ els.workTitle.addEventListener("input", () => {
 });
 
 els.typeForm.addEventListener("submit", addType);
+els.phraseForm.addEventListener("submit", addPhrase);
 els.inventorySearch.addEventListener("input", renderInventory);
 els.styleFilter.addEventListener("change", renderInventory);
 els.saveDraftBtn.addEventListener("click", saveDraft);
@@ -380,6 +518,20 @@ els.stage.addEventListener("click", (event) => {
   placeType(Number(cell.dataset.row), Number(cell.dataset.col));
 });
 
+els.phraseList.addEventListener("click", (event) => {
+  const applyButton = event.target.closest("[data-apply-phrase]");
+  const deleteButton = event.target.closest("[data-delete-phrase]");
+  if (applyButton) {
+    applyPhrase(applyButton.dataset.applyPhrase);
+  }
+  if (deleteButton) {
+    const text = deleteButton.dataset.deletePhrase;
+    state.phrases = state.phrases.filter((item) => item !== text);
+    notice = `词组「${text}」已移除。`;
+    renderAll();
+  }
+});
+
 els.draftList.addEventListener("click", (event) => {
   const loadButton = event.target.closest("[data-load-draft]");
   const deleteButton = event.target.closest("[data-delete-draft]");
@@ -388,6 +540,9 @@ els.draftList.addEventListener("click", (event) => {
     if (!draft) return;
     state.settings = structuredClone(draft.settings);
     state.placements = structuredClone(draft.placements);
+    state.phrases = structuredClone(draft.phrases || []);
+    state.selectedCell = null;
+    notice = `草稿「${draft.title}」已载入，含${state.phrases.length}条词组。`;
     renderAll();
   }
   if (deleteButton) {
