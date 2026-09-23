@@ -71,16 +71,28 @@
             </select>
           </div>
           <div id="typeList" class="type-list"></div>
+          <div class="divider"></div>
+          <div class="panel-head">
+            <h2>词组连排</h2>
+            <span id="phraseCount"></span>
+          </div>
+          <form id="phraseForm" class="phrase-form">
+            <input id="phraseInput" maxlength="6" placeholder="输入 2～6 字的词组" required />
+            <button class="primary" type="submit">保存</button>
+          </form>
+          <p class="field-hint">应用时从当前选中格起，按阅读方向连续落字；整条预检通过后才会落字。</p>
+          <div id="phraseList" class="phrase-list"></div>
         </aside>
 
         <section class="stage-wrap">
           <div class="status-strip">
             <div>
               <strong id="selectedTypeLabel">未选择字模</strong>
-              <span>点击字模后，在版面格子中落字，也可拖拽字模到版面。</span>
+              <span>点击字模后点格子落字，也可拖拽字模到版面；点击的格子会作为词组连排起点。</span>
             </div>
             <div id="shortageBadge" class="badge ok">数量充足</div>
           </div>
+          <div id="statusMessage" class="status-message" role="status" aria-live="polite"></div>
           <div id="stage" class="stage" aria-label="排版画布"></div>
         </section>
 

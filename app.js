@@ -9,10 +9,16 @@ const starterInventory = [
   { id: crypto.randomUUID(), char: "雨", style: "仿宋细字", size: 22, quantity: 4, wear: "新" }
 ];
 
+const starterPhrases = [
+  { id: crypto.randomUUID(), text: "山月" },
+  { id: crypto.randomUUID(), text: "花茶" }
+];
+
 const defaultState = {
   inventory: starterInventory,
   selectedTypeId: starterInventory[0].id,
   placements: [],
+  phrases: starterPhrases,
   drafts: [],
   settings: {
     paperSize: "postcard",
@@ -23,6 +29,8 @@ const defaultState = {
 };
 
 let state = loadState();
+
+let selectedCell = null;
 
 const els = {
   paperSize: document.querySelector("#paperSize"),
@@ -45,6 +53,11 @@ const els = {
   draftList: document.querySelector("#draftList"),
   placedCount: document.querySelector("#placedCount"),
   inventoryCount: document.querySelector("#inventoryCount"),
+  phraseForm: document.querySelector("#phraseForm"),
+  phraseInput: document.querySelector("#phraseInput"),
+  phraseList: document.querySelector("#phraseList"),
+  phraseCount: document.querySelector("#phraseCount"),
+  statusMessage: document.querySelector("#statusMessage"),
   saveDraftBtn: document.querySelector("#saveDraftBtn"),
   exportBtn: document.querySelector("#exportBtn"),
   clearBoardBtn: document.querySelector("#clearBoardBtn")
@@ -58,6 +71,7 @@ function loadState() {
     return {
       ...structuredClone(defaultState),
       ...parsed,
+      phrases: Array.isArray(parsed.phrases) ? parsed.phrases : structuredClone(defaultState.phrases),
       settings: { ...defaultState.settings, ...parsed.settings }
     };
   } catch {
@@ -149,8 +163,9 @@ function renderStage() {
       const placement = map.get(placementKey(row, col));
       const type = placement ? state.inventory.find((item) => item.id === placement.typeId) : null;
       const vertical = state.settings.flowMode === "vertical" ? "vertical" : "";
+      const cursor = selectedCell && selectedCell.row === row && selectedCell.col === col ? "cursor" : "";
       cells.push(`
-        <button class="cell ${type ? "used" : ""} ${vertical}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列">
+        <button class="cell ${type ? "used" : ""} ${vertical} ${cursor}" data-row="${row}" data-col="${col}" type="button" aria-label="第${row + 1}行第${col + 1}列${cursor ? "（词组起点）" : ""}">
           ${type ? escapeHtml(type.char) : ""}
         </button>
       `);
@@ -193,7 +208,7 @@ function renderDrafts() {
         (draft) => `
           <article class="draft-item">
             <strong>${escapeHtml(draft.title)}</strong>
-            <span>${draft.placements.length}个落字 · ${new Date(draft.savedAt).toLocaleString("zh-CN")}</span>
+            <span>${draft.placements.length}个落字 · ${Array.isArray(draft.phrases) ? draft.phrases.length : 0}条词组 · ${new Date(draft.savedAt).toLocaleString("zh-CN")}</span>
             <div class="draft-actions">
               <button type="button" data-load-draft="${draft.id}">载入</button>
               <button type="button" data-delete-draft="${draft.id}">删除</button>
@@ -204,6 +219,30 @@ function renderDrafts() {
       .join("") || `<p class="empty">还没有保存草稿。</p>`;
 }
 
+function renderPhrases() {
+  els.phraseCount.textContent = `${state.phrases.length}条词组`;
+  els.phraseList.innerHTML =
+    state.phrases
+      .map(
+        (phrase) => `
+          <article class="phrase-item">
+            <strong>${escapeHtml(phrase.text)}</strong>
+            <span>${[...phrase.text].length}字</span>
+            <div class="phrase-actions">
+              <button type="button" data-apply-phrase="${phrase.id}">应用</button>
+              <button type="button" data-remove-phrase="${phrase.id}" title="移除词组">移除</button>
+            </div>
+          </article>
+        `
+      )
+      .join("") || `<p class="empty">还没有保存词组。</p>`;
+}
+
+function setStatus(message, tone = "") {
+  els.statusMessage.textContent = message || "";
+  els.statusMessage.className = `status-message ${tone}`;
+}
+
 function renderAll() {
   saveState();
   renderSettings();
@@ -211,11 +250,17 @@ function renderAll() {
   renderInventory();
   renderStage();
   renderUsage();
+  renderPhrases();
   renderDrafts();
 }
 
 function placeType(row, col, typeId = state.selectedTypeId) {
-  if (!typeId) return;
+  selectedCell = { row, col };
+  if (!typeId) {
+    setStatus("");
+    renderStage();
+    return;
+  }
   const existingIndex = state.placements.findIndex((item) => item.row === row && item.col === col);
   if (existingIndex >= 0) {
     if (state.placements[existingIndex].typeId === typeId) {
@@ -226,6 +271,105 @@ function placeType(row, col, typeId = state.selectedTypeId) {
   } else {
     state.placements.push({ row, col, typeId });
   }
+  setStatus("");
+  renderAll();
+}
+
+function addPhrase(event) {
+  event.preventDefault();
+  const text = els.phraseInput.value.trim();
+  const length = [...text].length;
+  if (/\s/u.test(text)) {
+    setStatus("词组中间不能含空格，请连续书写 2～6 个字。", "warn");
+    return;
+  }
+  if (length < 2 || length > 6) {
+    setStatus(`词组需为 2～6 个字，当前 ${length} 个字。`, "warn");
+    return;
+  }
+  if (state.phrases.some((phrase) => phrase.text === text)) {
+    setStatus(`词组「${text}」已在列表中。`, "warn");
+    return;
+  }
+  state.phrases.unshift({ id: crypto.randomUUID(), text });
+  els.phraseForm.reset();
+  setStatus(`已保存词组「${text}」。`, "ok");
+  renderAll();
+}
+
+function chooseTypeForChar(char, preferredStyle, remaining) {
+  const candidates = state.inventory.filter(
+    (item) => item.char === char && (remaining[item.id] || 0) > 0
+  );
+  const sameStyle = candidates.find((item) => item.style === preferredStyle);
+  return sameStyle || candidates[0] || null;
+}
+
+function applyPhrase(phraseId) {
+  const phrase = state.phrases.find((item) => item.id === phraseId);
+  if (!phrase) return;
+  if (!selectedCell) {
+    setStatus("请先在版面上点击一个格子，作为词组连排的起点。", "warn");
+    return;
+  }
+
+  const { cols, rows } = getGrid();
+  const vertical = state.settings.flowMode === "vertical";
+  const chars = [...phrase.text];
+  const preferredStyle = getSelectedType()?.style || null;
+
+  // 预检：逐字算出落点，再在模拟用量中挑选字模，任一不满足就整次拒绝。
+  const occupied = new Map(state.placements.map((item) => [placementKey(item.row, item.col), item]));
+  const remaining = state.inventory.reduce((acc, item) => {
+    acc[item.id] = item.quantity;
+    return acc;
+  }, {});
+  state.placements.forEach((item) => {
+    if (remaining[item.typeId] !== undefined) remaining[item.typeId] -= 1;
+  });
+
+  const picked = [];
+  const fallbackChars = [];
+  for (let i = 0; i < chars.length; i += 1) {
+    const row = vertical ? selectedCell.row + i : selectedCell.row;
+    const col = vertical ? selectedCell.col : selectedCell.col + i;
+    if (row < 0 || row >= rows || col < 0 || col >= cols) {
+      setStatus(`已拒绝：第 ${i + 1} 个字「${chars[i]}」会越出纸张边界，请换更靠内的起点。`, "warn");
+      return;
+    }
+    const existing = occupied.get(placementKey(row, col));
+    const char = chars[i];
+    // 该格原有落字确定会被覆盖，其占用的字模先释放，再为当前字挑选字模。
+    if (existing && remaining[existing.typeId] !== undefined) {
+      remaining[existing.typeId] += 1;
+    }
+    if (!state.inventory.some((item) => item.char === char)) {
+      setStatus(`已拒绝：第 ${i + 1} 个字「${char}」没有字模，请先往字模库加入。`, "warn");
+      return;
+    }
+    const chosen = chooseTypeForChar(char, preferredStyle, remaining);
+    if (!chosen) {
+      setStatus(`已拒绝：第 ${i + 1} 个字「${char}」的全部字模都已用尽。`, "warn");
+      return;
+    }
+    remaining[chosen.id] -= 1;
+    if (preferredStyle && chosen.style !== preferredStyle) fallbackChars.push(char);
+    picked.push({ row, col, typeId: chosen.id, replaced: existing });
+  }
+
+  picked.forEach(({ row, col, typeId, replaced }) => {
+    if (replaced) {
+      replaced.typeId = typeId;
+    } else {
+      state.placements.push({ row, col, typeId });
+    }
+  });
+  selectedCell = { row: picked[picked.length - 1].row, col: picked[picked.length - 1].col };
+
+  const fallbackNote = fallbackChars.length
+    ? `；「${fallbackChars.join("")}」未用尽同风格，已改用其它风格`
+    : "";
+  setStatus(`词组「${phrase.text}」已连排 ${chars.length} 字${fallbackNote}。`, "ok");
   renderAll();
 }
 
@@ -255,6 +399,7 @@ function saveDraft() {
     title,
     settings: structuredClone(state.settings),
     placements: structuredClone(state.placements),
+    phrases: structuredClone(state.phrases),
     savedAt: new Date().toISOString()
   });
   state.drafts = state.drafts.slice(0, 8);
@@ -313,6 +458,7 @@ els.paperSize.addEventListener("change", () => {
   state.settings.paperSize = els.paperSize.value;
   const { cols, rows } = getGrid();
   state.placements = state.placements.filter((item) => item.row < rows && item.col < cols);
+  if (selectedCell && (selectedCell.row >= rows || selectedCell.col >= cols)) selectedCell = null;
   renderAll();
 });
 
@@ -332,12 +478,15 @@ els.workTitle.addEventListener("input", () => {
 });
 
 els.typeForm.addEventListener("submit", addType);
+els.phraseForm.addEventListener("submit", addPhrase);
 els.inventorySearch.addEventListener("input", renderInventory);
 els.styleFilter.addEventListener("change", renderInventory);
 els.saveDraftBtn.addEventListener("click", saveDraft);
 els.exportBtn.addEventListener("click", exportPreview);
 els.clearBoardBtn.addEventListener("click", () => {
   state.placements = [];
+  selectedCell = null;
+  setStatus("版面已清空。", "ok");
   renderAll();
 });
 
@@ -388,10 +537,24 @@ els.draftList.addEventListener("click", (event) => {
     if (!draft) return;
     state.settings = structuredClone(draft.settings);
     state.placements = structuredClone(draft.placements);
+    state.phrases = Array.isArray(draft.phrases) ? structuredClone(draft.phrases) : state.phrases;
+    selectedCell = null;
+    setStatus(`已载入草稿「${draft.title}」。`, "ok");
     renderAll();
   }
   if (deleteButton) {
     state.drafts = state.drafts.filter((item) => item.id !== deleteButton.dataset.deleteDraft);
+    renderAll();
+  }
+});
+
+els.phraseList.addEventListener("click", (event) => {
+  const applyButton = event.target.closest("[data-apply-phrase]");
+  const removeButton = event.target.closest("[data-remove-phrase]");
+  if (applyButton) applyPhrase(applyButton.dataset.applyPhrase);
+  if (removeButton) {
+    state.phrases = state.phrases.filter((item) => item.id !== removeButton.dataset.removePhrase);
+    setStatus("已移除该词组。", "ok");
     renderAll();
   }
 });

@@ -197,7 +197,7 @@ h3 {
 .type-list {
   display: grid;
   gap: 8px;
-  max-height: 58vh;
+  max-height: 46vh;
   overflow: auto;
   padding-right: 2px;
 }
@@ -259,6 +259,68 @@ h3 {
   place-items: center;
 }
 
+.phrase-form {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+}
+
+.field-hint {
+  margin: 8px 0 10px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.phrase-list {
+  display: grid;
+  gap: 8px;
+  max-height: 30vh;
+  overflow: auto;
+  padding-right: 2px;
+}
+
+.phrase-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 8px 10px;
+}
+
+.phrase-item strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  letter-spacing: 2px;
+}
+
+.phrase-item > span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.phrase-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 6px;
+}
+
+.phrase-actions button {
+  flex: 1;
+  padding: 7px;
+  font-size: 13px;
+}
+
+.empty {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .stage-wrap {
   padding: 14px;
 }
@@ -293,6 +355,32 @@ h3 {
 
 .badge.warn {
   background: var(--red);
+}
+
+.status-message {
+  margin-bottom: 12px;
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  display: none;
+}
+
+.status-message.ok,
+.status-message.warn {
+  display: block;
+}
+
+.status-message.ok {
+  border: 1px solid rgba(60, 112, 86, 0.45);
+  background: rgba(60, 112, 86, 0.1);
+  color: var(--green);
+}
+
+.status-message.warn {
+  border: 1px solid rgba(164, 64, 55, 0.45);
+  background: rgba(164, 64, 55, 0.09);
+  color: var(--red);
 }
 
 .stage {
@@ -345,6 +433,16 @@ h3 {
   border-style: solid;
   background: rgba(47, 41, 33, 0.9);
   color: #fff5df;
+}
+
+.cell.cursor {
+  outline: 3px solid var(--gold);
+  outline-offset: -3px;
+  box-shadow: inset 0 0 0 2px rgba(183, 134, 44, 0.35);
+}
+
+.cell.cursor.used {
+  outline-color: #e4b75a;
 }
 
 .cell.vertical {
